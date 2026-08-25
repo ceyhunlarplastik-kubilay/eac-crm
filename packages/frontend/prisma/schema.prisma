@@ -1,0 +1,127 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../lib/generated/prisma"
+  moduleFormat = "esm"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum CustomerReachStatus {
+  REACHED
+  NOT_REACHED
+  UNKNOWN
+}
+
+enum InterestStatus {
+  INTERESTED
+  NOT_INTERESTED
+  UNKNOWN
+}
+
+enum SampleStatus {
+  WILL_SEND
+  WILL_NOT_SEND
+  SENT
+  UNKNOWN
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  IMPORT
+}
+
+model Customer {
+  id                         String              @id @default(cuid())
+  dedupeKey                  String              @unique
+  sequenceNumber             Int?
+  companyName                String
+  website                    String?
+  email                      String?
+  phone                      String?
+  city                       String?
+  category                   String?
+  contactName                String?
+  mobilePhone                String?
+  reached                    CustomerReachStatus @default(UNKNOWN)
+  callCount                  Int                 @default(0)
+  lastContactedAt            DateTime?
+  contactDetail              String?
+  interestStatus             InterestStatus      @default(UNKNOWN)
+  catalogSent                Boolean?
+  hasSuitableProductGroup    Boolean?
+  currentAccountInfoReceived Boolean?
+  sampleStatus               SampleStatus        @default(UNKNOWN)
+  shipmentDate               DateTime?
+  sourceRowNumber            Int?
+  sourceImportBatchId        String?
+  sourceImportBatch          ImportBatch?        @relation(fields: [sourceImportBatchId], references: [id], onDelete: SetNull)
+  createdByEmail             String?
+  createdByName              String?
+  updatedByEmail             String?
+  updatedByName              String?
+  deletedAt                  DateTime?
+  createdAt                  DateTime            @default(now())
+  updatedAt                  DateTime            @updatedAt
+  activities                 ActivityLog[]
+  contacts                   CustomerContact[]
+
+  @@index([companyName])
+  @@index([city])
+  @@index([category])
+  @@index([updatedAt])
+  @@index([deletedAt])
+}
+
+model CustomerContact {
+  id          String   @id @default(cuid())
+  customerId  String
+  customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  contactedAt DateTime
+  note        String?
+  actorSub    String?
+  actorEmail  String?
+  actorName   String?
+  createdAt   DateTime @default(now())
+
+  @@index([customerId])
+  @@index([contactedAt])
+}
+
+model ImportBatch {
+  id            String        @id @default(cuid())
+  fileName      String
+  totalRows     Int
+  createdCount  Int           @default(0)
+  updatedCount  Int           @default(0)
+  skippedCount  Int           @default(0)
+  actorSub      String?
+  actorEmail    String?
+  actorName     String?
+  createdAt     DateTime      @default(now())
+  customers     Customer[]
+  activities    ActivityLog[]
+}
+
+model ActivityLog {
+  id            String      @id @default(cuid())
+  customerId    String?
+  customer      Customer?   @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  importBatchId String?
+  importBatch   ImportBatch? @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
+  action        AuditAction
+  summary       String
+  changes       Json?
+  actorSub      String?
+  actorEmail    String?
+  actorName     String?
+  createdAt     DateTime    @default(now())
+
+  @@index([customerId])
+  @@index([importBatchId])
+  @@index([actorEmail])
+  @@index([createdAt])
+}

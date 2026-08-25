@@ -1,15 +1,27 @@
 {
-  "name": "monorepo-template",
+  "name": "eac-crm",
   "version": "0.0.0",
+  "private": true,
   "workspaces": [
     "packages/*"
   ],
-  "scripts": {},
+  "scripts": {
+    "dev": "sst dev",
+    "deploy": "sst deploy",
+    "remove": "sst remove",
+    "frontend:dev": "npm run dev -w @eac-crm/frontend",
+    "frontend:build": "npm run build -w @eac-crm/frontend",
+    "db:generate": "npm run db:generate -w @eac-crm/frontend",
+    "db:migrate": "npm run db:migrate -w @eac-crm/frontend",
+    "db:push": "npm run db:push -w @eac-crm/frontend",
+    "db:studio": "npm run db:studio -w @eac-crm/frontend",
+    "typecheck": "npm run typecheck -w @eac-crm/frontend"
+  },
   "devDependencies": {
     "@tsconfig/node22": "^22",
     "typescript": "^5"
   },
   "dependencies": {
-    "sst": "^3"
+    "sst": "4.17.1"
   }
 }

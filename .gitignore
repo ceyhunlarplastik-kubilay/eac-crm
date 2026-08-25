@@ -14,5 +14,11 @@ node_modules
 # opennext
 .open-next
 
+# next
+.next
+
+# prisma
+packages/frontend/lib/generated/prisma
+
 # misc
 .DS_Store

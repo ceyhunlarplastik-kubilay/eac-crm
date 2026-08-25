@@ -3,18 +3,21 @@
 export default $config({
   app(input) {
     return {
-      name: "monorepo-template",
+      name: "eac-crm",
       removal: input?.stage === "production" ? "retain" : "remove",
       protect: ["production"].includes(input?.stage),
       home: "aws",
     };
   },
   async run() {
-    const storage = await import("./infra/storage");
-    await import("./infra/api");
+    const { adminGroup, userPool, userPoolClient } = await import("./infra/cognito");
+    const { frontend } = await import("./infra/frontend");
 
     return {
-      MyBucket: storage.bucket.name,
+      web: frontend.url,
+      userPoolId: userPool.id,
+      userPoolClientId: userPoolClient.id,
+      adminGroupName: adminGroup.name
     };
   },
 });
