@@ -41,8 +41,51 @@ function booleanValue(searchParams: URLSearchParams, key: string) {
   return undefined;
 }
 
+function padDatePart(value: number) {
+  return value.toString().padStart(2, "0");
+}
+
+function localDateTime(year: number, month: number, day: number, hour: number, minute: number) {
+  return new Date(
+    `${year}-${padDatePart(month)}-${padDatePart(day)}T${padDatePart(hour)}:${padDatePart(
+      minute
+    )}:00.000+03:00`
+  );
+}
+
+function validDateParts(year: number, month: number, day: number) {
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return (
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() + 1 === month &&
+    date.getUTCDate() === day
+  );
+}
+
+function turkishDateBoundary(value: string, endOfDay: boolean) {
+  const match = value.match(
+    /^(\d{1,2})[./-](\d{1,2})[./-](\d{2}|\d{4})(?:\s+(\d{1,2})(?::(\d{2}))?)?$/
+  );
+
+  if (!match) return undefined;
+
+  const day = Number.parseInt(match[1] ?? "", 10);
+  const month = Number.parseInt(match[2] ?? "", 10);
+  const rawYear = Number.parseInt(match[3] ?? "", 10);
+  const year = rawYear < 100 ? 2000 + rawYear : rawYear;
+  const hour = Number.parseInt(match[4] ?? (endOfDay ? "23" : "0"), 10);
+  const minute = Number.parseInt(match[5] ?? (endOfDay ? "59" : "0"), 10);
+
+  return validDateParts(year, month, day)
+    ? localDateTime(year, month, day, hour, minute)
+    : undefined;
+}
+
 function dateBoundary(value: string | undefined, endOfDay = false) {
   if (!value) return undefined;
+  const turkishDate = turkishDateBoundary(value, endOfDay);
+  if (turkishDate) return turkishDate;
+
   const hasTime = value.includes("T");
   const hasZone = /(?:Z|[+-]\d{2}:\d{2})$/.test(value);
   const localValue = hasTime

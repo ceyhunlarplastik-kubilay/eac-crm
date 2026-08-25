@@ -24,6 +24,29 @@ const columnMap: Record<string, keyof CustomerCreateInput> = {
   "Gönderim Tarihi": "shipmentDate"
 };
 
+const defaultImportHour = 11;
+
+function padDatePart(value: number) {
+  return value.toString().padStart(2, "0");
+}
+
+function localDateTime(year: number, month: number, day: number, hour = defaultImportHour, minute = 0) {
+  return new Date(
+    `${year}-${padDatePart(month)}-${padDatePart(day)}T${padDatePart(hour)}:${padDatePart(
+      minute
+    )}:00.000+03:00`
+  );
+}
+
+function validLocalDate(year: number, month: number, day: number) {
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return (
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() + 1 === month &&
+    date.getUTCDate() === day
+  );
+}
+
 function normalizeHeader(value: unknown) {
   return normalizeText(value)?.toLocaleLowerCase("tr-TR") ?? "";
 }
@@ -76,7 +99,52 @@ function mapSampleStatus(value: unknown) {
 function excelSerialDate(value: number) {
   const utcDays = Math.floor(value - 25569);
   const utcValue = utcDays * 86400;
-  return new Date(utcValue * 1000);
+  const date = new Date(utcValue * 1000);
+  return localDateTime(date.getUTCFullYear(), date.getUTCMonth() + 1, date.getUTCDate());
+}
+
+function parseDateText(value: unknown) {
+  if (value instanceof Date) {
+    return localDateTime(value.getUTCFullYear(), value.getUTCMonth() + 1, value.getUTCDate());
+  }
+
+  if (typeof value === "number" && value > 0) return excelSerialDate(value);
+
+  const normalized = normalizeText(value);
+  if (!normalized) return null;
+
+  const turkishDate = normalized.match(
+    /^(\d{1,2})[./-](\d{1,2})[./-](\d{2}|\d{4})(?:\s+(\d{1,2})(?::(\d{2}))?)?$/
+  );
+
+  if (turkishDate) {
+    const day = Number.parseInt(turkishDate[1] ?? "", 10);
+    const month = Number.parseInt(turkishDate[2] ?? "", 10);
+    const rawYear = Number.parseInt(turkishDate[3] ?? "", 10);
+    const year = rawYear < 100 ? 2000 + rawYear : rawYear;
+    const hour = Number.parseInt(turkishDate[4] ?? String(defaultImportHour), 10);
+    const minute = Number.parseInt(turkishDate[5] ?? "0", 10);
+
+    if (validLocalDate(year, month, day)) {
+      return localDateTime(year, month, day, hour, minute);
+    }
+  }
+
+  const isoDate = normalized.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T\s](\d{1,2}):(\d{2}))?/);
+
+  if (isoDate) {
+    const year = Number.parseInt(isoDate[1] ?? "", 10);
+    const month = Number.parseInt(isoDate[2] ?? "", 10);
+    const day = Number.parseInt(isoDate[3] ?? "", 10);
+    const hour = Number.parseInt(isoDate[4] ?? String(defaultImportHour), 10);
+    const minute = Number.parseInt(isoDate[5] ?? "0", 10);
+
+    if (validLocalDate(year, month, day)) {
+      return localDateTime(year, month, day, hour, minute);
+    }
+  }
+
+  return normalized;
 }
 
 function mapValue(field: keyof CustomerCreateInput, value: unknown) {
@@ -93,9 +161,7 @@ function mapValue(field: keyof CustomerCreateInput, value: unknown) {
   if (field === "sampleStatus") return mapSampleStatus(value);
 
   if (field === "lastContactedAt" || field === "shipmentDate") {
-    if (value instanceof Date) return value;
-    if (typeof value === "number" && value > 0) return excelSerialDate(value);
-    return normalizeText(value);
+    return parseDateText(value);
   }
 
   if (field === "sequenceNumber" || field === "callCount" || field === "sourceRowNumber") {
