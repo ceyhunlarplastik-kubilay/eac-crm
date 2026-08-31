@@ -1,3 +1,4 @@
+import type { Prisma } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { buildDedupeKey } from "@/lib/utils";
 import type { Actor } from "@/lib/session";
@@ -49,12 +50,36 @@ const trackedFields = [
   "shipmentDate"
 ] as const;
 
+const customerContactOrderBy = [
+  { contactedAt: "desc" as const },
+  { createdAt: "desc" as const }
+];
+
 export const customerContactInclude = {
   contacts: {
-    orderBy: [{ contactedAt: "desc" as const }, { createdAt: "desc" as const }],
+    orderBy: customerContactOrderBy,
     take: 20
   }
 };
+
+export async function contactMetrics(
+  tx: Prisma.TransactionClient,
+  customerId: string,
+  minimumCallCount = 0
+) {
+  const [contactCount, latestContact] = await Promise.all([
+    tx.customerContact.count({ where: { customerId } }),
+    tx.customerContact.findFirst({
+      where: { customerId },
+      orderBy: customerContactOrderBy
+    })
+  ]);
+
+  return {
+    callCount: Math.max(minimumCallCount, contactCount),
+    lastContactedAt: latestContact?.contactedAt ?? null
+  };
+}
 
 function comparable(value: unknown) {
   if (value instanceof Date) return value.toISOString();

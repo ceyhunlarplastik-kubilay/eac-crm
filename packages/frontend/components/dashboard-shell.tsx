@@ -621,6 +621,7 @@ export function DashboardShell({
   const [importing, setImporting] = useState(false);
   const [exportingReport, setExportingReport] = useState(false);
   const [addingContact, setAddingContact] = useState(false);
+  const [deletingContactId, setDeletingContactId] = useState<string | null>(null);
   const [newContactDate, setNewContactDate] = useState("");
   const [rangeStart, setRangeStart] = useState(() => {
     const start = new Date();
@@ -788,6 +789,14 @@ export function DashboardShell({
     }
   }
 
+  function applyCustomerUpdate(customer: Customer) {
+    setSelected(customer);
+    setForm(applyFormAutomation(customerToForm(customer)));
+    setCustomers((current) =>
+      current.map((item) => (item.id === customer.id ? customer : item))
+    );
+  }
+
   async function addCustomerContact() {
     if (!selected) return;
     if (!newContactDate) {
@@ -809,13 +818,7 @@ export function DashboardShell({
         }
       );
 
-      setSelected(data.customer);
-      setForm(applyFormAutomation(customerToForm(data.customer)));
-      setCustomers((current) =>
-        current.map((customer) =>
-          customer.id === data.customer.id ? data.customer : customer
-        )
-      );
+      applyCustomerUpdate(data.customer);
       setNewContactDate("");
       toast.success("Görüşme tarihi eklendi");
       await loadStats();
@@ -825,6 +828,33 @@ export function DashboardShell({
       );
     } finally {
       setAddingContact(false);
+    }
+  }
+
+  async function deleteCustomerContact(contact: ContactEntry) {
+    if (!selected) return;
+
+    const confirmed = window.confirm(
+      `${formatDate(contact.contactedAt)} görüşme tarihi silinsin mi?`
+    );
+    if (!confirmed) return;
+
+    setDeletingContactId(contact.id);
+    try {
+      const data = await fetchJson<{ customer: Customer }>(
+        `/api/customers/${encodeURIComponent(selected.id)}/contacts/${encodeURIComponent(contact.id)}`,
+        { method: "DELETE" }
+      );
+
+      applyCustomerUpdate(data.customer);
+      toast.success("Görüşme tarihi silindi");
+      await loadStats();
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Görüşme tarihi silinemedi."
+      );
+    } finally {
+      setDeletingContactId(null);
     }
   }
 
@@ -1464,12 +1494,14 @@ export function DashboardShell({
                 contacts={selected?.contacts ?? []}
                 newContactDate={newContactDate}
                 addingContact={addingContact}
+                deletingContactId={deletingContactId}
                 saving={saving}
                 submitLabel="Kaydet"
                 onSubmit={(event) => void submitCustomer(event, "update")}
                 onDelete={() => void deleteCustomer()}
                 onNewContactDateChange={setNewContactDate}
                 onAddContact={() => void addCustomerContact()}
+                onDeleteContact={(contact) => void deleteCustomerContact(contact)}
                 updateForm={updateForm}
               />
               <div className="mt-3 flex justify-end">
@@ -1648,24 +1680,28 @@ function CustomerForm({
   contacts,
   newContactDate,
   addingContact,
+  deletingContactId,
   saving,
   submitLabel,
   onSubmit,
   onDelete,
   onNewContactDateChange,
   onAddContact,
+  onDeleteContact,
   updateForm
 }: {
   form: FormState;
   contacts: ContactEntry[];
   newContactDate?: string;
   addingContact?: boolean;
+  deletingContactId?: string | null;
   saving: boolean;
   submitLabel: string;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
   onDelete?: () => void;
   onNewContactDateChange?: (value: string) => void;
   onAddContact?: () => void;
+  onDeleteContact?: (contact: ContactEntry) => void;
   updateForm: <K extends keyof FormState>(key: K, value: FormState[K]) => void;
 }) {
   return (
@@ -1795,20 +1831,49 @@ function CustomerForm({
             </div>
           </div>
         )}
-        {contacts.length > 0 && (
+        {(contacts.length > 0 || onDeleteContact) && (
           <div className="sm:col-span-2 rounded-md border bg-muted/30 p-3">
             <div className="mb-2 text-sm font-medium">Görüşme Tarihleri</div>
-            <div className="flex flex-wrap gap-2">
-              {contacts.map((contact) => (
-                <Badge
-                  key={contact.id}
-                  className="border-teal-200 bg-teal-50 text-teal-700"
-                  title={contact.actorName ?? contact.actorEmail ?? undefined}
-                >
-                  {formatDate(contact.contactedAt)}
-                </Badge>
-              ))}
-            </div>
+            {contacts.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {contacts.map((contact) => {
+                  const deleting = deletingContactId === contact.id;
+
+                  return (
+                    <div
+                      key={contact.id}
+                      className="inline-flex items-center overflow-hidden rounded-md border border-teal-200 bg-teal-50 text-teal-700"
+                      title={contact.actorName ?? contact.actorEmail ?? undefined}
+                    >
+                      <span className="px-2 py-1 text-xs font-medium">
+                        {formatDate(contact.contactedAt)}
+                      </span>
+                      {onDeleteContact && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 rounded-none border-l border-teal-200 text-teal-700 hover:bg-rose-50 hover:text-rose-700"
+                          onClick={() => onDeleteContact(contact)}
+                          disabled={saving || Boolean(deletingContactId)}
+                          aria-label="Görüşme tarihini sil"
+                        >
+                          {deleting ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-3.5 w-3.5" />
+                          )}
+                        </Button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Kayıtlı görüşme tarihi yok.
+              </p>
+            )}
           </div>
         )}
         <Field label="Katalog">

@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { actorFields, customerContactInclude, serializeCustomer } from "@/lib/customer-service";
+import {
+  actorFields,
+  contactMetrics,
+  customerContactInclude,
+  serializeCustomer
+} from "@/lib/customer-service";
 import { prisma } from "@/lib/prisma";
 import { ApiError, jsonError, requireAdmin } from "@/lib/session";
 import { normalizeText } from "@/lib/utils";
@@ -57,11 +62,6 @@ export async function POST(request: Request, context: RouteContext) {
       throw new ApiError(409, "Bu görüşme tarihi zaten kayıtlı.");
     }
 
-    const nextLastContactedAt =
-      existing.lastContactedAt && existing.lastContactedAt > parsed.contactedAt
-        ? existing.lastContactedAt
-        : parsed.contactedAt;
-
     const customer = await prisma.$transaction(async (tx) => {
       await tx.customerContact.create({
         data: {
@@ -74,11 +74,11 @@ export async function POST(request: Request, context: RouteContext) {
         }
       });
 
+      const metrics = await contactMetrics(tx, id, existing.callCount + 1);
       const updated = await tx.customer.update({
         where: { id },
         data: {
-          lastContactedAt: nextLastContactedAt,
-          callCount: { increment: 1 },
+          ...metrics,
           ...(parsed.note ? { contactDetail: parsed.note } : {}),
           ...actorFields(actor, "update")
         }
@@ -92,11 +92,11 @@ export async function POST(request: Request, context: RouteContext) {
           changes: {
             lastContactedAt: {
               before: existing.lastContactedAt?.toISOString() ?? null,
-              after: nextLastContactedAt.toISOString()
+              after: metrics.lastContactedAt?.toISOString() ?? null
             },
             callCount: {
               before: existing.callCount,
-              after: existing.callCount + 1
+              after: metrics.callCount
             }
           },
           actorSub: actor.sub,
