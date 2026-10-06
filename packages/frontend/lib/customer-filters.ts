@@ -104,7 +104,9 @@ function integerBoundary(value: string | undefined) {
 export function buildCustomerWhere(searchParams: URLSearchParams) {
   const query = value(searchParams, "q");
   const city = value(searchParams, "city");
-  const category = value(searchParams, "category");
+  const rawCategory = searchParams.get("category");
+  const category = rawCategory && rawCategory !== "all" ? rawCategory : undefined;
+  const categoryId = value(searchParams, "categoryId");
   const reached = enumValue(reachStatuses, searchParams, "reached");
   const interestStatus = enumValue(
     interestStatuses,
@@ -133,7 +135,10 @@ export function buildCustomerWhere(searchParams: URLSearchParams) {
   };
 
   if (city) where.city = city;
-  if (category) where.category = category;
+  if (categoryId) where.categoryId = categoryId;
+  else if (category !== undefined) {
+    where.category = { is: { name: category } };
+  }
   if (reached) where.reached = reached;
   if (interestStatus) where.interestStatus = interestStatus;
   if (sampleStatus) where.sampleStatus = sampleStatus;
@@ -165,7 +170,7 @@ export function buildCustomerWhere(searchParams: URLSearchParams) {
       { phone: { contains: query, mode: "insensitive" } },
       { mobilePhone: { contains: query, mode: "insensitive" } },
       { city: { contains: query, mode: "insensitive" } },
-      { category: { contains: query, mode: "insensitive" } },
+      { category: { is: { name: { contains: query, mode: "insensitive" } } } },
       { contactDetail: { contains: query, mode: "insensitive" } }
     ];
   }
@@ -191,6 +196,7 @@ export function hasCustomerFilters(searchParams: URLSearchParams) {
     "q",
     "city",
     "category",
+    "categoryId",
     "reached",
     "interestStatus",
     "catalogSent",

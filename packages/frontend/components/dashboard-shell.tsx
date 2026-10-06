@@ -23,6 +23,7 @@ import {
   RefreshCcw,
   Save,
   Search,
+  Tags,
   Trash2,
   Upload
 } from "lucide-react";
@@ -69,6 +70,7 @@ import {
   TableRow
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import { CategoryManager, type ManagedCategory } from "@/components/category-manager";
 import {
   deriveSampleStatus as deriveRuleSampleStatus,
   type SampleStatus
@@ -84,6 +86,7 @@ type Customer = {
   phone: string | null;
   city: string | null;
   category: string | null;
+  categoryId: string | null;
   contactName: string | null;
   mobilePhone: string | null;
   reached: "REACHED" | "NOT_REACHED" | "UNKNOWN";
@@ -140,9 +143,12 @@ type Option = {
   label: string;
 };
 
+type CategoryOption = { id: string; name: string; customerCount?: number };
+
 type FilterOptions = {
   cities: string[];
   categories: string[];
+  categoryOptions: CategoryOption[];
   reached: Option[];
   interestStatus: Option[];
   boolean: Option[];
@@ -197,7 +203,7 @@ type FormState = {
   email: string;
   phone: string;
   city: string;
-  category: string;
+  categoryId: string;
   contactName: string;
   mobilePhone: string;
   reached: Customer["reached"];
@@ -219,7 +225,7 @@ const emptyForm: FormState = {
   email: "",
   phone: "",
   city: "",
-  category: "Kutu Profil",
+  categoryId: "",
   contactName: "",
   mobilePhone: "",
   reached: "UNKNOWN",
@@ -276,6 +282,7 @@ const CONTACT_DETAIL_TEMPLATES = [
 const defaultFilterOptions: FilterOptions = {
   cities: [],
   categories: [],
+  categoryOptions: [],
   reached: [],
   interestStatus: [],
   boolean: [],
@@ -376,7 +383,7 @@ function customerToForm(customer: Customer): FormState {
     email: customer.email ?? "",
     phone: customer.phone ?? "",
     city: customer.city ?? "",
-    category: customer.category ?? "",
+    categoryId: customer.categoryId ?? "",
     contactName: customer.contactName ?? "",
     mobilePhone: customer.mobilePhone ?? "",
     reached: customer.reached,
@@ -422,7 +429,7 @@ function formToPayload(form: FormState) {
     email: optionalString(form.email),
     phone: optionalString(form.phone),
     city: optionalString(form.city),
-    category: optionalString(form.category),
+    categoryId: form.categoryId || null,
     contactName: optionalString(form.contactName),
     mobilePhone: optionalString(form.mobilePhone),
     reached: form.reached,
@@ -603,6 +610,9 @@ export function DashboardShell({
   const [stats, setStats] = useState<Stats | null>(null);
   const [filterOptions, setFilterOptions] =
     useState<FilterOptions>(defaultFilterOptions);
+  const [categories, setCategories] = useState<CategoryOption[]>([]);
+  const [creatingCategory, setCreatingCategory] = useState(false);
+  const [categoryManagerOpen, setCategoryManagerOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [filters, setFilters] = useState<CustomerFilters>(emptyFilters);
   const [pagination, setPagination] = useState<Pagination>({
@@ -666,13 +676,77 @@ export function DashboardShell({
       if (key === "dateField" && !sourceFilters.dateFrom && !sourceFilters.dateTo) {
         continue;
       }
-      params.set(key, value);
+      params.set(key === "category" ? "categoryId" : key, value);
     }
   }
 
   async function loadFilters() {
-    const data = await fetchJson<FilterOptions>("/api/customers/filters");
+    const [data, catalog] = await Promise.all([
+      fetchJson<FilterOptions>("/api/customers/filters"),
+      fetchJson<{ categories: CategoryOption[] }>("/api/categories")
+    ]);
     setFilterOptions(data);
+    setCategories(catalog.categories);
+  }
+
+  function selectCategory(categoryId: string) {
+    setForm((current) => ({ ...current, categoryId }));
+  }
+
+  async function createCategory(name: string, selectNewCategory = true) {
+    setCreatingCategory(true);
+    try {
+      const { category } = await fetchJson<{ category: CategoryOption }>("/api/categories", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name })
+      });
+      setCategories((current) => [...current.filter((item) => item.id !== category.id), category]
+        .sort((a, b) => a.name.localeCompare(b.name, "tr-TR")));
+      if (selectNewCategory) setForm((current) => ({ ...current, categoryId: category.id }));
+      toast.success(selectNewCategory ? "Kategori oluşturuldu ve seçildi" : "Kategori oluşturuldu");
+      return true;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Kategori oluşturulamadı.");
+      return false;
+    } finally {
+      setCreatingCategory(false);
+    }
+  }
+
+  async function renameCategory(id: string, name: string) {
+    try {
+      const { category } = await fetchJson<{ category: CategoryOption }>(`/api/categories/${encodeURIComponent(id)}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name })
+      });
+      setCategories((current) => current.map((item) => item.id === id ? category : item)
+        .sort((a, b) => a.name.localeCompare(b.name, "tr-TR")));
+      setFilterOptions((current) => ({ ...current,
+        categoryOptions: current.categoryOptions.map((item) => item.id === id ? category : item)
+          .sort((a, b) => a.name.localeCompare(b.name, "tr-TR"))
+      }));
+      setCustomers((current) => current.map((item) => item.categoryId === id ? { ...item, category: name } : item));
+      setSelected((current) => current?.categoryId === id ? { ...current, category: name } : current);
+      toast.success("Kategori adı güncellendi");
+      return true;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Kategori güncellenemedi.");
+      return false;
+    }
+  }
+
+  async function deleteCategory(category: ManagedCategory) {
+    if (!window.confirm(`${category.name} kategorisi silinsin mi?`)) return false;
+    try {
+      await fetchJson(`/api/categories/${encodeURIComponent(category.id)}`, { method: "DELETE" });
+      setCategories((current) => current.filter((item) => item.id !== category.id));
+      setForm((current) => current.categoryId === category.id ? { ...current, categoryId: "" } : current);
+      toast.success("Kategori silindi");
+      return true;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Kategori silinemedi.");
+      return false;
+    }
   }
 
   async function loadCustomers(
@@ -884,6 +958,7 @@ export function DashboardShell({
         setNewCustomerDialogOpen(false);
         setForm(emptyForm);
       }
+      await loadFilters();
       await refresh();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Kayıt tamamlanamadı.");
@@ -1141,6 +1216,13 @@ export function DashboardShell({
                     {importing ? <Loader2 className="animate-spin" /> : <Upload />}
                     Excel
                   </Button>
+                  <Button variant="outline" onClick={() => {
+                    void loadFilters().then(() => setCategoryManagerOpen(true)).catch((error) => {
+                      toast.error(error instanceof Error ? error.message : "Kategoriler yüklenemedi.");
+                    });
+                  }}>
+                    <Tags /> Kategoriler
+                  </Button>
                   <Button
                     onClick={() => {
                       setSelected(null);
@@ -1168,9 +1250,9 @@ export function DashboardShell({
                     label="Kategori"
                     value={filters.category}
                     onValueChange={(value) => updateFilter("category", value)}
-                    options={filterOptions.categories.map((category) => ({
-                      value: category,
-                      label: category
+                    options={filterOptions.categoryOptions.map((category) => ({
+                      value: category.id,
+                      label: category.name || "(Boş kategori adı)"
                     }))}
                   />
                   <SelectField
@@ -1491,6 +1573,10 @@ export function DashboardShell({
               )}
               <CustomerForm
                 form={form}
+                categories={categories}
+                creatingCategory={creatingCategory}
+                onCategorySelect={selectCategory}
+                onCategoryCreate={createCategory}
                 contacts={selected?.contacts ?? []}
                 newContactDate={newContactDate}
                 addingContact={addingContact}
@@ -1531,6 +1617,10 @@ export function DashboardShell({
             </DialogHeader>
             <CustomerForm
               form={form}
+              categories={categories}
+              creatingCategory={creatingCategory}
+              onCategorySelect={selectCategory}
+              onCategoryCreate={createCategory}
               contacts={[]}
               newContactDate=""
               addingContact={false}
@@ -1541,6 +1631,14 @@ export function DashboardShell({
             />
           </DialogContent>
         </Dialog>
+        <CategoryManager
+          open={categoryManagerOpen}
+          onOpenChange={setCategoryManagerOpen}
+          categories={categories.map((category) => ({ ...category, customerCount: category.customerCount ?? 0 }))}
+          onCreate={(name) => createCategory(name, false)}
+          onRename={renameCategory}
+          onDelete={deleteCategory}
+        />
       </motion.div>
     </main>
   );
@@ -1677,6 +1775,10 @@ function ActivityDrawerContent({
 
 function CustomerForm({
   form,
+  categories,
+  creatingCategory,
+  onCategorySelect,
+  onCategoryCreate,
   contacts,
   newContactDate,
   addingContact,
@@ -1691,6 +1793,10 @@ function CustomerForm({
   updateForm
 }: {
   form: FormState;
+  categories: CategoryOption[];
+  creatingCategory: boolean;
+  onCategorySelect: (id: string) => void;
+  onCategoryCreate: (name: string) => Promise<boolean>;
   contacts: ContactEntry[];
   newContactDate?: string;
   addingContact?: boolean;
@@ -1704,6 +1810,8 @@ function CustomerForm({
   onDeleteContact?: (contact: ContactEntry) => void;
   updateForm: <K extends keyof FormState>(key: K, value: FormState[K]) => void;
 }) {
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [showNewCategory, setShowNewCategory] = useState(false);
   return (
     <form className="space-y-4" onSubmit={onSubmit}>
       <div className="grid gap-3 sm:grid-cols-2">
@@ -1714,10 +1822,44 @@ function CustomerForm({
           />
         </Field>
         <Field label="Kategori">
-          <Input
-            value={form.category}
-            onChange={(event) => updateForm("category", event.target.value)}
-          />
+          <div className="space-y-2">
+            <Select
+              value={form.categoryId || "no-category"}
+              onValueChange={(value) => onCategorySelect(value === "no-category" ? "" : value)}
+              disabled={saving || creatingCategory}
+            >
+              <SelectTrigger className="w-full"><SelectValue placeholder="Kategori seç" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="no-category">Kategori yok</SelectItem>
+                {categories.map((category) => (
+                  <SelectItem key={category.id} value={category.id}>
+                    {category.name || "(Boş kategori adı)"}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button type="button" variant="outline" size="sm"
+              disabled={saving || creatingCategory}
+              onClick={() => setShowNewCategory((current) => !current)}>
+              <Plus /> Yeni kategori
+            </Button>
+            {showNewCategory && (
+              <div className="flex gap-2">
+                <Input aria-label="Yeni kategori adı" value={newCategoryName}
+                  onChange={(event) => setNewCategoryName(event.target.value)}
+                  disabled={creatingCategory} maxLength={1000} placeholder="Kategori adı" />
+                <Button type="button" disabled={creatingCategory || !newCategoryName.trim()}
+                  onClick={async () => {
+                    if (await onCategoryCreate(newCategoryName)) {
+                      setNewCategoryName("");
+                      setShowNewCategory(false);
+                    }
+                  }}>
+                  {creatingCategory ? <Loader2 className="animate-spin" /> : "Ekle"}
+                </Button>
+              </div>
+            )}
+          </div>
         </Field>
         <Field label="Firma" className="sm:col-span-2">
           <Input
@@ -1940,7 +2082,7 @@ function CustomerForm({
       </div>
 
       <div className="flex items-center justify-between gap-2">
-        <Button type="submit" disabled={saving}>
+        <Button type="submit" disabled={saving || creatingCategory}>
           {saving ? <Loader2 className="animate-spin" /> : <Save />}
           {submitLabel}
         </Button>

@@ -1,4 +1,5 @@
 import ExcelJS from "exceljs";
+import { customerCategoryName } from "@/lib/category-transition";
 import { buildCustomerWhere } from "@/lib/customer-filters";
 import { prisma } from "@/lib/prisma";
 import { jsonError, requireAdmin } from "@/lib/session";
@@ -101,6 +102,7 @@ export async function GET(request: Request) {
       where,
       orderBy: [{ updatedAt: "desc" }, { sequenceNumber: "asc" }],
       include: {
+        category: true,
         contacts: {
           orderBy: [{ contactedAt: "desc" }, { createdAt: "desc" }],
           take: 2
@@ -128,6 +130,10 @@ export async function GET(request: Request) {
     workbook.creator = "EAPARAT CRM";
     workbook.created = new Date();
 
+    const selectedCategoryId = url.searchParams.get("categoryId");
+    const selectedCategory = selectedCategoryId && selectedCategoryId !== "all"
+      ? await prisma.category.findUnique({ where: { id: selectedCategoryId } })
+      : null;
     const summary = workbook.addWorksheet("Özet");
     summary.addRows([
       ["EAPARAT CRM Raporu", ""],
@@ -136,7 +142,9 @@ export async function GET(request: Request) {
       ["Filtre", "Değer"],
       ["Arama", searchParamLabel(url.searchParams.get("q"))],
       ["Şehir", searchParamLabel(url.searchParams.get("city"))],
-      ["Kategori", searchParamLabel(url.searchParams.get("category"))],
+      ["Kategori", selectedCategoryId && selectedCategoryId !== "all"
+        ? selectedCategory?.name ?? "Kategori bulunamadı"
+        : searchParamLabel(url.searchParams.get("category"))],
       ["Ulaşıldı", searchParamLabel(url.searchParams.get("reached"))],
       ["Durum", searchParamLabel(url.searchParams.get("interestStatus"))],
       ["Numune", searchParamLabel(url.searchParams.get("sampleStatus"))],
@@ -183,6 +191,7 @@ export async function GET(request: Request) {
     customerSheet.addRow([
       "Sıra",
       "Firma",
+      "Kategori",
       "Şehir",
       "Yetkili",
       "Telefon",
@@ -207,6 +216,7 @@ export async function GET(request: Request) {
       customerSheet.addRow([
         index + 1,
         customer.companyName,
+        customerCategoryName(customer) ?? "",
         customer.city ?? "",
         customer.contactName ?? "",
         customer.phone ?? customer.mobilePhone ?? "",
@@ -228,7 +238,7 @@ export async function GET(request: Request) {
     customerSheet.views = [{ state: "frozen", ySplit: 1 }];
     customerSheet.autoFilter = {
       from: "A1",
-      to: "R1"
+      to: "S1"
     };
     fitColumns(customerSheet);
 

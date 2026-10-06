@@ -1,4 +1,5 @@
 import { parseCustomerWorkbook } from "@/lib/excel-import";
+import { requireCustomerWrites } from "@/lib/category-transition";
 import { prisma } from "@/lib/prisma";
 import { jsonError, requireAdmin } from "@/lib/session";
 
@@ -8,6 +9,7 @@ export const maxDuration = 300;
 export async function POST(request: Request) {
   try {
     const { actor } = await requireAdmin();
+    requireCustomerWrites();
     const formData = await request.formData();
     const file = formData.get("file");
 

@@ -1,8 +1,8 @@
 import ExcelJS from "exceljs";
-import { customerCreateSchema, type CustomerCreateInput } from "@/lib/customer-schema";
+import { customerImportSchema, type CustomerImportInput } from "@/lib/customer-schema";
 import { normalizeText } from "@/lib/utils";
 
-const columnMap: Record<string, keyof CustomerCreateInput> = {
+const columnMap: Record<string, keyof CustomerImportInput> = {
   "Sıra Numarası": "sequenceNumber",
   Firma: "companyName",
   "Web Adresi": "website",
@@ -51,19 +51,20 @@ function normalizeHeader(value: unknown) {
   return normalizeText(value)?.toLocaleLowerCase("tr-TR") ?? "";
 }
 
-function readCellValue(cell: ExcelJS.Cell) {
+function readCellValue(cell: ExcelJS.Cell, preserveText = false) {
   const value = cell.value;
 
   if (value instanceof Date) return value;
   if (typeof value === "object" && value && "text" in value) {
-    return normalizeText((value as { text?: string }).text);
+    const text = (value as { text?: string }).text;
+    return preserveText ? text : normalizeText(text);
   }
   if (typeof value === "object" && value && "result" in value) {
     return (value as { result?: unknown }).result;
   }
   if (typeof value === "number") return value;
 
-  return normalizeText(cell.text || value);
+  return preserveText ? (cell.text || value) : normalizeText(cell.text || value);
 }
 
 function yesNoToBoolean(value: unknown) {
@@ -147,7 +148,10 @@ function parseDateText(value: unknown) {
   return normalized;
 }
 
-function mapValue(field: keyof CustomerCreateInput, value: unknown) {
+function mapValue(field: keyof CustomerImportInput, value: unknown) {
+  if (field === "category") {
+    return value === null || value === undefined || value === "" ? null : String(value);
+  }
   if (
     field === "catalogSent" ||
     field === "hasSuitableProductGroup" ||
@@ -185,7 +189,7 @@ export async function parseCustomerWorkbook(file: File) {
   }
 
   let headerRowNumber = 0;
-  const headerColumns = new Map<number, keyof CustomerCreateInput>();
+  const headerColumns = new Map<number, keyof CustomerImportInput>();
 
   worksheet.eachRow((row, rowNumber) => {
     if (headerRowNumber) return;
@@ -212,7 +216,7 @@ export async function parseCustomerWorkbook(file: File) {
     throw new Error("Excel başlık satırı bulunamadı.");
   }
 
-  const rows: CustomerCreateInput[] = [];
+  const rows: CustomerImportInput[] = [];
   const skipped: Array<{ rowNumber: number; reason: string }> = [];
 
   for (let rowNumber = headerRowNumber + 1; rowNumber <= worksheet.rowCount; rowNumber += 1) {
@@ -222,7 +226,7 @@ export async function parseCustomerWorkbook(file: File) {
     };
 
     for (const [colNumber, field] of headerColumns) {
-      raw[field] = mapValue(field, readCellValue(row.getCell(colNumber)));
+      raw[field] = mapValue(field, readCellValue(row.getCell(colNumber), field === "category"));
     }
 
     if (!normalizeText(raw.companyName)) {
@@ -230,7 +234,7 @@ export async function parseCustomerWorkbook(file: File) {
       continue;
     }
 
-    const parsed = customerCreateSchema.safeParse(raw);
+    const parsed = customerImportSchema.safeParse(raw);
 
     if (parsed.success) {
       rows.push(parsed.data);

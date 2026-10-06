@@ -4,6 +4,7 @@ import {
   customerContactInclude,
   serializeCustomer
 } from "@/lib/customer-service";
+import { requireCustomerWrites } from "@/lib/category-transition";
 import { prisma } from "@/lib/prisma";
 import { ApiError, jsonError, requireAdmin } from "@/lib/session";
 
@@ -17,6 +18,7 @@ type RouteContext = {
 export async function DELETE(_request: Request, context: RouteContext) {
   try {
     const { actor } = await requireAdmin();
+    requireCustomerWrites();
     const { id, contactId } = await context.params;
 
     const customer = await prisma.$transaction(async (tx) => {

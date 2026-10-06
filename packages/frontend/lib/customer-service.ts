@@ -2,6 +2,7 @@ import type { Prisma } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { buildDedupeKey } from "@/lib/utils";
 import type { Actor } from "@/lib/session";
+import { customerCategoryName } from "@/lib/category-transition";
 
 type CustomerData = {
   dedupeKey?: string;
@@ -11,7 +12,8 @@ type CustomerData = {
   email?: string | null;
   phone?: string | null;
   city?: string | null;
-  category?: string | null;
+  category?: { name: string } | null;
+  categoryId?: string | null;
   contactName?: string | null;
   mobilePhone?: string | null;
   reached?: "REACHED" | "NOT_REACHED" | "UNKNOWN";
@@ -56,6 +58,7 @@ const customerContactOrderBy = [
 ];
 
 export const customerContactInclude = {
+  category: true,
   contacts: {
     orderBy: customerContactOrderBy,
     take: 20
@@ -96,8 +99,8 @@ export function diffCustomer(before: Record<string, unknown>, after: CustomerDat
   for (const field of trackedFields) {
     if (!(field in after)) continue;
 
-    const previous = comparable(before[field]);
-    const next = comparable(after[field]);
+    const previous = field === "category" ? customerCategoryName(before) : comparable(before[field]);
+    const next = field === "category" ? customerCategoryName(after) : comparable(after[field]);
 
     if (previous !== next) {
       changes[field] = {
@@ -110,9 +113,11 @@ export function diffCustomer(before: Record<string, unknown>, after: CustomerDat
   return changes;
 }
 
-export function serializeCustomer(customer: Record<string, unknown>) {
+export function serializeCustomer<T extends Record<string, unknown>>(customer: T) {
+  const { category: _category, ...data } = customer;
   return {
-    ...customer,
+    ...data,
+    category: customerCategoryName(customer),
     lastContactedAt: serializeDate(customer.lastContactedAt),
     shipmentDate: serializeDate(customer.shipmentDate),
     createdAt: serializeDate(customer.createdAt),

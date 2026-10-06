@@ -79,7 +79,13 @@ npm run frontend:dev
 npm run frontend:build
 npm run db:generate
 npm run db:push
+npm run db:status
 npm run db:migrate
 npm run db:studio
 npm run typecheck
 ```
+
+Kategori modeline veri kaybetmeden geçiş, kubi denemeleri ve production sırası için
+[kategori geçiş runbook'u](docs/category-migration.md) kullanılır. Güncel sürüm
+yalnızca kategori ilişkisini kullanır; eski metin sütunu doğrulama kontrollü
+contract migration'ıyla kaldırılır. Kategoriler dashboard'dan yönetilir.

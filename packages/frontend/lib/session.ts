@@ -1,19 +1,14 @@
 import { auth } from "@/auth";
+import { ApiError } from "@/lib/api-error";
+import { ZodError } from "zod";
+
+export { ApiError } from "@/lib/api-error";
 
 export type Actor = {
   sub: string;
   email: string | null;
   name: string | null;
 };
-
-export class ApiError extends Error {
-  constructor(
-    public status: number,
-    message: string
-  ) {
-    super(message);
-  }
-}
 
 export async function requireAdmin() {
   const session = await auth();
@@ -37,6 +32,12 @@ export async function requireAdmin() {
 }
 
 export function jsonError(error: unknown) {
+  if (error instanceof ZodError) {
+    return Response.json(
+      { error: error.issues.map((issue) => issue.message).join(", ") },
+      { status: 400 }
+    );
+  }
   if (error instanceof ApiError) {
     return Response.json({ error: error.message }, { status: error.status });
   }

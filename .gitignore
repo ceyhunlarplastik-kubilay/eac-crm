@@ -22,3 +22,6 @@ packages/frontend/lib/generated/prisma
 
 # misc
 .DS_Store
+
+# Local database backups and migration snapshots (may contain customer data)
+.local/

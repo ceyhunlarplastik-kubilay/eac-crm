@@ -1,7 +1,9 @@
 import type { Prisma, PrismaClient } from "@/lib/generated/prisma/client";
-import type { CustomerCreateInput } from "@/lib/customer-schema";
+import { customerImportSchema, type CustomerImportInput, type CustomerCreateInput } from "@/lib/customer-schema";
 import { diffCustomer } from "@/lib/customer-service";
 import type { Actor } from "@/lib/session";
+import { resolveCustomerCategory } from "@/lib/category-service";
+import { requireCustomerWrites } from "@/lib/category-transition";
 
 function toJson(value: unknown) {
   return JSON.parse(JSON.stringify(value));
@@ -21,16 +23,17 @@ function hydrateDate(value: unknown) {
 }
 
 export function hydrateImportRows(rows: Array<Record<string, unknown>>) {
-  return rows.map((row) => ({
+  return rows.map((row) => customerImportSchema.parse({
     ...row,
     lastContactedAt: hydrateDate(row.lastContactedAt),
     shipmentDate: hydrateDate(row.shipmentDate)
-  })) as CustomerCreateInput[];
+  }));
 }
 
-function withMinimumCallCount(row: CustomerCreateInput) {
+function withMinimumCallCount(row: CustomerImportInput) {
+  const { category: _categoryName, ...data } = row;
   return {
-    ...row,
+    ...data,
     callCount: row.lastContactedAt ? Math.max(row.callCount ?? 0, 1) : row.callCount
   };
 }
@@ -85,10 +88,11 @@ export async function importCustomerRows({
   actor
 }: {
   prisma: PrismaClient;
-  rows: CustomerCreateInput[];
+  rows: CustomerImportInput[];
   importBatchId: string;
   actor: Actor;
 }) {
+  requireCustomerWrites();
   let createdCount = 0;
   let updatedCount = 0;
   const skipped: Array<{ rowNumber: number; reason: string }> = [];
@@ -96,22 +100,25 @@ export async function importCustomerRows({
   for (const row of rows) {
     try {
       const result = await prisma.$transaction(async (tx) => {
+        const category = await resolveCustomerCategory(tx, row);
         const existing = await tx.customer.findUnique({
-          where: { dedupeKey: row.dedupeKey }
+          where: { dedupeKey: row.dedupeKey },
+          include: { category: true }
         });
 
         if (existing) {
           const data = {
             ...withMinimumCallCount(row),
+            ...category,
             sourceImportBatchId: importBatchId,
             updatedByEmail: actor.email,
             updatedByName: actor.name,
             deletedAt: null
           };
-          const changes = diffCustomer(existing, data);
           const customer = await tx.customer.update({
             where: { id: existing.id },
-            data
+            data,
+            include: { category: true }
           });
 
           await recordImportedContact(tx, customer.id, data, actor);
@@ -122,7 +129,10 @@ export async function importCustomerRows({
               importBatchId,
               action: "IMPORT",
               summary: `${customer.companyName} Excel import ile güncellendi.`,
-              changes: toJson(changes),
+              changes: toJson(diffCustomer(existing, {
+                ...data,
+                ...("categoryId" in category ? { category: customer.category } : {})
+              })),
               actorSub: actor.sub,
               actorEmail: actor.email,
               actorName: actor.name
@@ -132,7 +142,7 @@ export async function importCustomerRows({
           return "update" as const;
         }
 
-        const data = withMinimumCallCount(row);
+        const data = { ...withMinimumCallCount(row), ...category };
         const customer = await tx.customer.create({
           data: {
             ...data,
@@ -141,7 +151,8 @@ export async function importCustomerRows({
             createdByName: actor.name,
             updatedByEmail: actor.email,
             updatedByName: actor.name
-          }
+          },
+          include: { category: true }
         });
 
         await recordImportedContact(tx, customer.id, data, actor);
@@ -152,7 +163,7 @@ export async function importCustomerRows({
             importBatchId,
             action: "IMPORT",
             summary: `${customer.companyName} Excel import ile oluşturuldu.`,
-            changes: toJson(row),
+            changes: toJson({ ...data, category: customer.category?.name ?? null }),
             actorSub: actor.sub,
             actorEmail: actor.email,
             actorName: actor.name

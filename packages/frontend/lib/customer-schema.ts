@@ -65,7 +65,7 @@ const customerBaseSchema = z.object({
     email: optionalNullableString,
     phone: optionalNullableString,
     city: optionalNullableString,
-    category: optionalNullableString,
+    categoryId: z.string().min(1).nullable().optional(),
     contactName: optionalNullableString,
     mobilePhone: optionalNullableString,
     reached: reachStatusSchema.default("UNKNOWN"),
@@ -83,6 +83,7 @@ const customerBaseSchema = z.object({
   });
 
 export const customerCreateSchema = customerBaseSchema
+  .strict()
   .transform((value) => {
     const normalized = normalizeSampleStatus(value);
 
@@ -94,8 +95,34 @@ export const customerCreateSchema = customerBaseSchema
 
 export const customerUpdateSchema = customerBaseSchema
   .partial()
+  // Zod 4 applies inner defaults even inside partial(): PATCH must not reset them.
+  .extend({
+    reached: reachStatusSchema.optional(),
+    callCount: z.coerce.number().int().min(0).optional(),
+    interestStatus: interestStatusSchema.optional(),
+    sampleStatus: sampleStatusSchema.optional()
+  })
+  .strict()
   .refine((value) => Object.keys(value).length > 0, {
     message: "Güncellenecek alan bulunamadı"
   });
 
 export type CustomerCreateInput = z.infer<typeof customerCreateSchema>;
+
+// Excel keeps names on the wire, but they are never passed into customer writes.
+export const customerImportSchema = customerBaseSchema
+  .extend({
+    category: z.string().max(1000).nullable().optional(),
+    // Parsed workbook rows travel through the client; always recompute this key.
+    dedupeKey: z.string().optional()
+  })
+  .strict()
+  .refine((value) => value.category === undefined || value.categoryId === undefined, {
+    message: "category ve categoryId birlikte gönderilemez."
+  })
+  .transform((value) => {
+    const normalized = normalizeSampleStatus(value);
+    return { ...normalized, dedupeKey: buildDedupeKey(normalized) };
+  });
+
+export type CustomerImportInput = z.infer<typeof customerImportSchema>;

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { requireCustomerWrites } from "@/lib/category-transition";
 import {
   actorFields,
   contactMetrics,
@@ -36,6 +37,7 @@ function dateRangeForDay(date: Date) {
 export async function POST(request: Request, context: RouteContext) {
   try {
     const { actor } = await requireAdmin();
+    requireCustomerWrites();
     const { id } = await context.params;
     const parsed = contactCreateSchema.parse(await request.json());
 

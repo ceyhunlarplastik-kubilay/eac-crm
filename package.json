@@ -12,7 +12,11 @@
     "frontend:dev": "npm run dev -w @eac-crm/frontend",
     "frontend:build": "npm run build -w @eac-crm/frontend",
     "db:generate": "npm run db:generate -w @eac-crm/frontend",
+    "db:status": "npm run db:status -w @eac-crm/frontend",
     "db:migrate": "npm run db:migrate -w @eac-crm/frontend",
+    "db:migrate:deploy": "npm run db:migrate:deploy -w @eac-crm/frontend --",
+    "db:categories": "npm run db:categories -w @eac-crm/frontend --",
+    "test:categories": "npm run test:categories -w @eac-crm/frontend",
     "db:push": "npm run db:push -w @eac-crm/frontend",
     "db:studio": "npm run db:studio -w @eac-crm/frontend",
     "typecheck": "npm run typecheck -w @eac-crm/frontend"

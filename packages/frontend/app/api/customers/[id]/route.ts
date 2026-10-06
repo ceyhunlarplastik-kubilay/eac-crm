@@ -1,4 +1,6 @@
 import { customerUpdateSchema } from "@/lib/customer-schema";
+import { resolveCustomerCategory } from "@/lib/category-service";
+import { requireCustomerWrites } from "@/lib/category-transition";
 import {
   actorFields,
   customerContactInclude,
@@ -25,11 +27,13 @@ function dateKey(value: Date | null | undefined) {
 export async function PATCH(request: Request, context: RouteContext) {
   try {
     const { actor } = await requireAdmin();
+    requireCustomerWrites();
     const { id } = await context.params;
     const parsed = customerUpdateSchema.parse(await request.json());
 
     const existing = await prisma.customer.findFirst({
-      where: { id, deletedAt: null }
+      where: { id, deletedAt: null },
+      include: { category: true }
     });
 
     if (!existing) {
@@ -67,15 +71,15 @@ export async function PATCH(request: Request, context: RouteContext) {
       }
     }
 
-    const changes = diffCustomer(existing, data);
-
     const customer = await prisma.$transaction(async (tx) => {
+      const resolvedData = { ...data, ...await resolveCustomerCategory(tx, data) };
       const saved = await tx.customer.update({
         where: { id },
         data: {
-          ...data,
+          ...resolvedData,
           ...actorFields(actor, "update")
-        }
+        },
+        include: { category: true }
       });
 
       if (shouldRecordContact && nextContactedAt) {
@@ -91,18 +95,25 @@ export async function PATCH(request: Request, context: RouteContext) {
         });
       }
 
+      await tx.activityLog.create({
+        data: {
+          customerId: saved.id,
+          action: "UPDATE",
+          summary: `${saved.companyName} kaydı güncellendi.`,
+          changes: JSON.parse(JSON.stringify(diffCustomer(existing, {
+            ...resolvedData,
+            ...("categoryId" in resolvedData ? { category: saved.category } : {})
+          }))),
+          actorSub: actor.sub,
+          actorEmail: actor.email,
+          actorName: actor.name
+        }
+      });
+
       return tx.customer.findUniqueOrThrow({
         where: { id: saved.id },
         include: customerContactInclude
       });
-    });
-
-    await writeActivity({
-      customerId: customer.id,
-      action: "UPDATE",
-      summary: `${customer.companyName} kaydı güncellendi.`,
-      changes,
-      actor
     });
 
     return Response.json({ customer: serializeCustomer(customer) });
@@ -114,6 +125,7 @@ export async function PATCH(request: Request, context: RouteContext) {
 export async function DELETE(_request: Request, context: RouteContext) {
   try {
     const { actor } = await requireAdmin();
+    requireCustomerWrites();
     const { id } = await context.params;
 
     const existing = await prisma.customer.findFirst({
@@ -129,7 +141,8 @@ export async function DELETE(_request: Request, context: RouteContext) {
       data: {
         deletedAt: new Date(),
         ...actorFields(actor, "update")
-      }
+      },
+      include: customerContactInclude
     });
 
     await writeActivity({

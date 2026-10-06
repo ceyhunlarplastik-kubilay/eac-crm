@@ -17,6 +17,7 @@ export const frontend = new sst.aws.Nextjs("MyWeb", {
     COGNITO_REGION: cognitoRegion,
     COGNITO_USER_POOL_ID: userPool.id,
     DATABASE_URL: databaseUrl,
+    CUSTOMER_WRITES_PAUSED: process.env.CUSTOMER_WRITES_PAUSED ?? "false",
     NEXT_PUBLIC_APP_STAGE: $app.stage
   },
   permissions: [

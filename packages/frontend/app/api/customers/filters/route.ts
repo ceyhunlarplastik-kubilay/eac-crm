@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { customerCategoryName } from "@/lib/category-transition";
 import { jsonError, requireAdmin } from "@/lib/session";
 
 export const runtime = "nodejs";
@@ -18,13 +19,18 @@ export async function GET() {
       where: { deletedAt: null },
       select: {
         city: true,
-        category: true
+        category: true,
+        categoryId: true,
       }
     });
 
     return Response.json({
       cities: uniqueSorted(customers.map((customer) => customer.city)),
-      categories: uniqueSorted(customers.map((customer) => customer.category)),
+      categories: uniqueSorted(customers.map(customerCategoryName)),
+      categoryOptions: [...new Map(customers
+        .filter((customer) => customer.category !== null)
+        .map((customer) => [customer.category!.id, customer.category!])).values()]
+        .sort((a, b) => a.name.localeCompare(b.name, "tr-TR")),
       reached: [
         { value: "REACHED", label: "Evet" },
         { value: "NOT_REACHED", label: "Hayır" },

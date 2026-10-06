@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { requireCustomerWrites } from "@/lib/category-transition";
 import { hydrateImportRows, importCustomerRows } from "@/lib/customer-import-service";
 import { prisma } from "@/lib/prisma";
 import { jsonError, requireAdmin } from "@/lib/session";
@@ -14,6 +15,7 @@ const importChunkSchema = z.object({
 export async function POST(request: Request) {
   try {
     const { actor } = await requireAdmin();
+    requireCustomerWrites();
     const parsed = importChunkSchema.parse(await request.json());
     const rows = hydrateImportRows(parsed.rows);
 

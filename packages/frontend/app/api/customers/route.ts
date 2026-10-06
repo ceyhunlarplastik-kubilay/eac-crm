@@ -1,9 +1,10 @@
 import { customerCreateSchema } from "@/lib/customer-schema";
+import { resolveCustomerCategory } from "@/lib/category-service";
+import { requireCustomerWrites } from "@/lib/category-transition";
 import {
   actorFields,
   customerContactInclude,
-  serializeCustomer,
-  writeActivity
+  serializeCustomer
 } from "@/lib/customer-service";
 import { buildCustomerWhere, readPagination } from "@/lib/customer-filters";
 import { prisma } from "@/lib/prisma";
@@ -48,6 +49,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const { actor } = await requireAdmin();
+    requireCustomerWrites();
     const parsed = customerCreateSchema.parse(await request.json());
 
     const existing = await prisma.customer.findUnique({
@@ -64,6 +66,7 @@ export async function POST(request: Request) {
     const customer = await prisma.$transaction(async (tx) => {
       const data = {
         ...parsed,
+        ...await resolveCustomerCategory(tx, parsed),
         callCount: parsed.lastContactedAt
           ? Math.max(parsed.callCount ?? 0, 1)
           : parsed.callCount
@@ -76,13 +79,15 @@ export async function POST(request: Request) {
               ...data,
               deletedAt: null,
               ...actorFields(actor, "update")
-            }
+            },
+            include: customerContactInclude
           })
         : await tx.customer.create({
             data: {
               ...data,
               ...actorFields(actor, "create")
-            }
+            },
+            include: customerContactInclude
           });
 
       if (data.lastContactedAt) {
@@ -98,18 +103,22 @@ export async function POST(request: Request) {
         });
       }
 
+      await tx.activityLog.create({
+        data: {
+          customerId: saved.id,
+          action: "CREATE",
+          summary: `${saved.companyName} kaydı oluşturuldu.`,
+          changes: JSON.parse(JSON.stringify({ ...data, category: saved.category?.name ?? null })),
+          actorSub: actor.sub,
+          actorEmail: actor.email,
+          actorName: actor.name
+        }
+      });
+
       return tx.customer.findUniqueOrThrow({
         where: { id: saved.id },
         include: customerContactInclude
       });
-    });
-
-    await writeActivity({
-      customerId: customer.id,
-      action: "CREATE",
-      summary: `${customer.companyName} kaydı oluşturuldu.`,
-      changes: parsed,
-      actor
     });
 
     return Response.json({ customer: serializeCustomer(customer) }, { status: 201 });

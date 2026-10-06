@@ -43,7 +43,8 @@ model Customer {
   email                      String?
   phone                      String?
   city                       String?
-  category                   String?
+  categoryId                 String?
+  category                   Category?           @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   contactName                String?
   mobilePhone                String?
   reached                    CustomerReachStatus @default(UNKNOWN)
@@ -71,9 +72,15 @@ model Customer {
 
   @@index([companyName])
   @@index([city])
-  @@index([category])
+  @@index([categoryId])
   @@index([updatedAt])
   @@index([deletedAt])
+}
+
+model Category {
+  id        String     @id @default(cuid())
+  name      String     @unique
+  customers Customer[]
 }
 
 model CustomerContact {
