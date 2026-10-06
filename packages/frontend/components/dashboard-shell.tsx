@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "motion/react";
 import { signOut } from "next-auth/react";
+import Link from "next/link";
 import {
   Bar,
   BarChart,
@@ -17,6 +18,7 @@ import {
   ChevronRight,
   Download,
   Filter,
+  Headphones,
   Loader2,
   LogOut,
   Plus,
@@ -1122,6 +1124,7 @@ export function DashboardShell({
             <p className="mt-1 text-sm text-muted-foreground">{user.name} · {user.email}</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" asChild><Link href="/call-analytics"><Headphones /> Görüşme Analizleri</Link></Button>
             <Button variant="outline" onClick={() => void refresh()} disabled={loading}>
               <RefreshCcw className={loading ? "animate-spin" : ""} />
               Yenile
@@ -1548,6 +1551,7 @@ export function DashboardShell({
               </DrawerDescription>
             </DrawerHeader>
             <div className="overflow-y-auto px-4 pb-4 sm:px-6">
+              {selected && <div className="mb-4 flex justify-end"><Button variant="outline" asChild><Link href={`/call-analytics?customerId=${encodeURIComponent(selected.id)}`}><Headphones /> Görüşme kayıtları ve analizleri</Link></Button></div>}
               {selected && (
                 <div className="mb-4 grid gap-3 rounded-md border bg-muted/30 p-3 text-sm sm:grid-cols-2">
                   <div className="min-w-0">

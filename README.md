@@ -89,3 +89,16 @@ Kategori modeline veri kaybetmeden geçiş, kubi denemeleri ve production sıras
 [kategori geçiş runbook'u](docs/category-migration.md) kullanılır. Güncel sürüm
 yalnızca kategori ilişkisini kullanır; eski metin sütunu doğrulama kontrollü
 contract migration'ıyla kaldırılır. Kategoriler dashboard'dan yönetilir.
+
+## Görüşme analizi
+
+Admin panelindeki Görüşme Analizleri sayfası müşteriyle yapılan telefon kaydını
+S3'e yükler; EventBridge ve Step Functions ile Transcribe → Bedrock akışını
+çalıştırır. Görüşme özeti, müşteri ihtiyacı, takip adımları ve katalogdan
+kaynaklı ürün önerileri müşteriye bağlı `CallRecording` tablosuna kaydedilir.
+Kurulum, PDF indeksleme ve kubi/production komutları için
+[görüşme analizi rehberini](docs/post-call-analytics.md) kullanın.
+
+Farklı müşteri görüşmelerini sesli kaydedip sistemi denemek için
+[test diyalogları ve beklenen sonuçlar](test-diyaloglari/README.md) proje
+kökündeki `test-diyaloglari/` klasöründedir.

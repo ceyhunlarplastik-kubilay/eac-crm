@@ -1,4 +1,5 @@
 import { cognitoRegion, userPool, userPoolClient } from "./cognito";
+import { callAnalytics } from "./call-analytics";
 
 const databaseUrl = process.env.DATABASE_URL ?? "";
 const authSecret = process.env.AUTH_SECRET ?? "dev-only-change-me";
@@ -18,9 +19,17 @@ export const frontend = new sst.aws.Nextjs("MyWeb", {
     COGNITO_USER_POOL_ID: userPool.id,
     DATABASE_URL: databaseUrl,
     CUSTOMER_WRITES_PAUSED: process.env.CUSTOMER_WRITES_PAUSED ?? "false",
+    ...(callAnalytics ? {
+      CALL_RECORDING_API_URL: callAnalytics.uploadApi.url,
+      CALL_ANALYTICS_REGION: callAnalytics.region
+    } : {}),
     NEXT_PUBLIC_APP_STAGE: $app.stage
   },
   permissions: [
+    ...(callAnalytics ? [{
+      actions: ["execute-api:Invoke"],
+      resources: [$interpolate`${callAnalytics.uploadApi.nodes.api.executionArn}/*/*/recordings*`]
+    }] : []),
     {
       actions: [
         "cognito-idp:InitiateAuth",

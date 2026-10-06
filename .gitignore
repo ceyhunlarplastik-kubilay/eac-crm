@@ -25,3 +25,5 @@ packages/frontend/lib/generated/prisma
 
 # Local database backups and migration snapshots (may contain customer data)
 .local/
+
+test-diyaloglari/
