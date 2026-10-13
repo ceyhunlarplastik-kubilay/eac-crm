@@ -6,9 +6,49 @@
 
 declare module "sst" {
   export interface Resource {
+    "AnalyzeSalesCall": {
+      "name": string
+      "type": "sst.aws.Function"
+    }
+    "CallRecordingApi": {
+      "type": "sst.aws.ApiGatewayV2"
+      "url": string
+    }
+    "CallRecordingApiHandler": {
+      "name": string
+      "type": "sst.aws.Function"
+    }
+    "CallRecordings": {
+      "name": string
+      "type": "sst.aws.Bucket"
+    }
+    "FailCallRecording": {
+      "name": string
+      "type": "sst.aws.Function"
+    }
+    "HandleCallExecutionFailure": {
+      "name": string
+      "type": "sst.aws.Function"
+    }
     "MyWeb": {
       "type": "sst.aws.Nextjs"
       "url": string
+    }
+    "PollCallTranscription": {
+      "name": string
+      "type": "sst.aws.Function"
+    }
+    "PrepareCallRecording": {
+      "name": string
+      "type": "sst.aws.Function"
+    }
+    "SalesCatalogs": {
+      "name": string
+      "type": "sst.aws.Bucket"
+    }
+    "StartCallTranscription": {
+      "name": string
+      "type": "sst.aws.Function"
     }
     "UserPool": {
       "id": string

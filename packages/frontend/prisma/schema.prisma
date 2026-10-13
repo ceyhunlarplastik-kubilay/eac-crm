@@ -34,6 +34,15 @@ enum AuditAction {
   IMPORT
 }
 
+enum CallRecordingStatus {
+  UPLOADING
+  QUEUED
+  TRANSCRIBING
+  ANALYZING
+  COMPLETED
+  FAILED
+}
+
 model Customer {
   id                         String              @id @default(cuid())
   dedupeKey                  String              @unique
@@ -69,6 +78,7 @@ model Customer {
   updatedAt                  DateTime            @updatedAt
   activities                 ActivityLog[]
   contacts                   CustomerContact[]
+  callRecordings             CallRecording[]
 
   @@index([companyName])
   @@index([city])
@@ -77,10 +87,93 @@ model Customer {
   @@index([deletedAt])
 }
 
+model CallRecording {
+  id                   String              @id @default(uuid())
+  customerId           String
+  customer             Customer            @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  fileName             String
+  fileSize             Int
+  contentType          String
+  mediaFormat          String
+  s3Bucket             String
+  s3Key                String              @unique
+  representativeName   String
+  recordedAt           DateTime?
+  languageCode         String              @default("tr-TR")
+  speakerMode          String              @default("diarization")
+  status               CallRecordingStatus @default(UPLOADING)
+  attempt              Int                 @default(1)
+  workflowExecutionArn String?
+  transcribeJobName    String?
+  transcriptS3Key      String?
+  transcriptText       String?
+  transcriptSegments   Json?
+  durationSeconds      Float?
+  averageConfidence    Float?
+  analysis             Json?
+  catalogSources       Json?
+  modelId              String?
+  promptVersion        String?
+  inputTokens          Int?
+  outputTokens         Int?
+  errorCode            String?
+  errorMessage         String?
+  uploadedBySub        String
+  uploadedByEmail      String?
+  uploadedByName       String?
+  uploadedAt           DateTime?
+  completedAt          DateTime?
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+
+  @@index([customerId, createdAt])
+  @@index([status, updatedAt])
+}
+
 model Category {
   id        String     @id @default(cuid())
   name      String     @unique
   customers Customer[]
+}
+
+enum KnowledgeDocumentKind {
+  CATALOG
+  COMPANY
+}
+
+// Published versions are immutable. The indexer switches the active version atomically.
+model KnowledgeDocument {
+  id               String                @id @default(uuid())
+  sourceKey        String
+  title            String
+  kind             KnowledgeDocumentKind
+  version          String
+  sourceUri        String
+  contentHash      String
+  embeddingModelId String
+  dimensions       Int                   @default(768)
+  chunkCount       Int
+  active           Boolean               @default(false)
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+  chunks           KnowledgeChunk[]
+
+  @@unique([sourceKey, version, contentHash, embeddingModelId], map: "KnowledgeDocument_version_key")
+  @@index([active, embeddingModelId])
+}
+
+model KnowledgeChunk {
+  id         String                      @id @default(uuid())
+  documentId String
+  document   KnowledgeDocument           @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  ordinal    Int
+  page       Int?
+  text       String
+  embedding  Unsupported("vector(768)")
+  searchText Unsupported("tsvector")?     @default(dbgenerated())
+
+  @@unique([documentId, ordinal])
+  // HNSW, GIN and the single-active-version index are maintained by SQL migrations.
 }
 
 model CustomerContact {
