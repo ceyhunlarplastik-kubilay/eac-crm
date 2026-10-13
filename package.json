@@ -22,7 +22,9 @@
     "typecheck": "npm run typecheck -w @eac-crm/frontend && npm run typecheck -w @eac-crm/call-analytics",
     "typecheck:infra": "tsc -p tsconfig.infra.json",
     "test:call-analytics": "npm run test -w @eac-crm/call-analytics",
-    "catalog:sync": "node --import tsx packages/call-analytics/scripts/catalog.ts"
+    "catalog:sync": "node --import tsx packages/call-analytics/scripts/catalog.ts",
+    "google:verify": "node --import tsx packages/call-analytics/scripts/google-verify.ts",
+    "google:federation": "node --import tsx packages/call-analytics/scripts/google-federation.ts"
   },
   "devDependencies": {
     "@tsconfig/node22": "^22",

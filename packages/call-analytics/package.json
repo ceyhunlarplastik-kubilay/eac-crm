@@ -12,13 +12,14 @@
     "catalog": "node --import tsx scripts/catalog.ts"
   },
   "dependencies": {
-    "@aws-sdk/client-bedrock-agent": "3.1107.0",
-    "@aws-sdk/client-bedrock-agent-runtime": "3.1107.0",
-    "@aws-sdk/client-bedrock-runtime": "3.1107.0",
     "@aws-sdk/client-s3": "3.1107.0",
     "@aws-sdk/client-sfn": "3.1107.0",
     "@aws-sdk/client-transcribe": "3.1107.0",
     "@aws-sdk/s3-request-presigner": "3.1107.0",
+    "@google/genai": "2.28.0",
+    "dotenv": "17.4.2",
+    "google-auth-library": "11.2.0",
+    "pdfjs-dist": "6.4.299",
     "pg": "8.23.0",
     "zod": "4.4.3"
   },

@@ -2,7 +2,7 @@ import { z } from "zod";
 
 export const MAX_AUDIO_BYTES = 200 * 1024 * 1024;
 export const MAX_TRANSCRIPT_CHARACTERS = 100_000;
-export const PROMPT_VERSION = "sales-call-tr-v1";
+export const PROMPT_VERSION = "sales-call-tr-v2-google-neon";
 export const recordingStatuses = ["UPLOADING", "QUEUED", "TRANSCRIBING", "ANALYZING", "COMPLETED", "FAILED"] as const;
 export type RecordingStatus = typeof recordingStatuses[number];
 export const statusLabels: Record<RecordingStatus, string> = {
@@ -75,6 +75,8 @@ export type CatalogSource = {
   text: string;
   score: number | null;
   version: string | null;
+  title?: string;
+  kind?: "CATALOG" | "COMPANY";
 };
 export type TranscriptSegment = {
   speaker: string;

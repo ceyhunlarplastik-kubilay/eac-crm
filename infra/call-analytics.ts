@@ -1,12 +1,25 @@
+import { existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { googleAuthEnvironment } from "./google-auth";
+
 const region = aws.getRegionOutput({}).region;
 const account = aws.getCallerIdentityOutput({}).accountId;
 const databaseUrl = process.env.DATABASE_URL ?? "";
 const enabled = process.env.POST_CALL_ANALYTICS_ENABLED !== "false";
-const modelId = process.env.BEDROCK_MODEL_ID ?? "eu.amazon.nova-lite-v1:0";
-const foundationModelId = modelId.replace(/^(eu|us|apac|global)\./, "");
+const googleProject = process.env.GOOGLE_CLOUD_PROJECT ?? "";
+const modelId = process.env.GEMINI_MODEL_ID ?? "gemini-3.1-flash-lite";
+const wifPath = resolve(process.env.GOOGLE_WIF_CONFIG_PATH ?? `.local/google/wif-${$app.stage}.json`);
 
 function createCallAnalytics() {
+  const wif = existsSync(wifPath) ? JSON.parse(readFileSync(wifPath, "utf8")) : null;
   if (!databaseUrl) throw new Error("Post-call analytics için DATABASE_URL gerekli.");
+  if (!googleProject) throw new Error("Post-call analytics için GOOGLE_CLOUD_PROJECT gerekli.");
+  if (!$dev && !wif) throw new Error("Deploy öncesi google:federation --stage ile WIF hazırlayın. Ayrıntılar docs/post-call-analytics.md içinde.");
+  if (wif && (!wif.audience?.includes(`/workloadIdentityPools/eac-crm-${$app.stage}/`)
+    || !wif.service_account_impersonation_url?.endsWith(`@${googleProject}.iam.gserviceaccount.com:generateAccessToken`))) {
+    throw new Error("Google WIF dosyası seçili SST stage / Google projesiyle eşleşmiyor.");
+  }
+  const googleAuth = googleAuthEnvironment($dev, wif);
 
   const recordings = new sst.aws.Bucket("CallRecordings", { cors: false, enforceHttps: true });
   const catalogs = new sst.aws.Bucket("SalesCatalogs", { cors: false, enforceHttps: true, versioning: true });
@@ -19,64 +32,21 @@ function createCallAnalytics() {
   }
   new aws.s3.BucketNotification("RecordingEvents", { bucket: recordings.name, eventbridge: true });
 
-  const vectors = new aws.s3.VectorsVectorBucket("CatalogVectors", {
-    vectorBucketName: $interpolate`${$app.name}-${$app.stage}-${account}-catalog-vectors`
-  });
-  const index = new aws.s3.VectorsIndex("CatalogVectorIndex", {
-    vectorBucketName: vectors.vectorBucketName, indexName: "sales-catalog",
-    dataType: "float32", dimension: 1024, distanceMetric: "cosine",
-    metadataConfiguration: { nonFilterableMetadataKeys: ["AMAZON_BEDROCK_TEXT", "AMAZON_BEDROCK_METADATA"] }
-  });
-  const knowledgeRole = new aws.iam.Role("CatalogKnowledgeRole", {
-    assumeRolePolicy: $jsonStringify({
-      Version: "2012-10-17", Statement: [{
-        Effect: "Allow", Principal: { Service: "bedrock.amazonaws.com" }, Action: "sts:AssumeRole",
-        Condition: { StringEquals: { "aws:SourceAccount": account }, ArnLike: { "aws:SourceArn": $interpolate`arn:aws:bedrock:${region}:${account}:knowledge-base/*` } }
-      }]
-    })
-  });
-  const knowledgePolicy = new aws.iam.RolePolicy("CatalogKnowledgePermissions", {
-    role: knowledgeRole.id,
-    policy: $jsonStringify({
-      Version: "2012-10-17", Statement: [
-        { Effect: "Allow", Action: ["bedrock:InvokeModel"], Resource: $interpolate`arn:aws:bedrock:${region}::foundation-model/amazon.titan-embed-text-v2:0` },
-        { Effect: "Allow", Action: ["s3:ListBucket"], Resource: catalogs.arn, Condition: { StringLike: { "s3:prefix": ["catalogs/*"] } } },
-        { Effect: "Allow", Action: ["s3:GetObject"], Resource: $interpolate`${catalogs.arn}/catalogs/*` },
-        { Effect: "Allow", Action: ["s3vectors:PutVectors", "s3vectors:GetVectors", "s3vectors:DeleteVectors", "s3vectors:QueryVectors", "s3vectors:GetIndex"], Resource: index.indexArn }
-      ]
-    })
-  });
-  const knowledgeBase = new aws.bedrock.AgentKnowledgeBase("SalesKnowledgeBase", {
-    name: `${$app.name}-${$app.stage}-sales-catalog`, roleArn: knowledgeRole.arn,
-    knowledgeBaseConfiguration: {
-      type: "VECTOR", vectorKnowledgeBaseConfiguration: {
-        embeddingModelArn: $interpolate`arn:aws:bedrock:${region}::foundation-model/amazon.titan-embed-text-v2:0`,
-        embeddingModelConfiguration: { bedrockEmbeddingModelConfiguration: { dimensions: 1024, embeddingDataType: "FLOAT32" } }
-      }
-    },
-    storageConfiguration: { type: "S3_VECTORS", s3VectorsConfiguration: { indexArn: index.indexArn } }
-  }, { dependsOn: [knowledgePolicy, index] });
-  const dataSource = new aws.bedrock.AgentDataSource("SalesCatalogDataSource", {
-    knowledgeBaseId: knowledgeBase.id, name: "sales-catalogs", dataDeletionPolicy: "RETAIN",
-    dataSourceConfiguration: { type: "S3", s3Configuration: { bucketArn: catalogs.arn, inclusionPrefixes: ["catalogs/"] } },
-    vectorIngestionConfiguration: { chunkingConfiguration: { chunkingStrategy: "FIXED_SIZE", fixedSizeChunkingConfiguration: { maxTokens: 450, overlapPercentage: 15 } } }
-  });
-
   const transcribeRole = new aws.iam.Role("RecordingTranscribeRole", {
     assumeRolePolicy: $jsonStringify({
       Version: "2012-10-17", Statement: [{
         Effect: "Allow", Principal: { Service: "transcribe.amazonaws.com" }, Action: "sts:AssumeRole",
-        Condition: { StringEquals: { "aws:SourceAccount": account }, ArnLike: { "aws:SourceArn": $interpolate`arn:aws:transcribe:${region}:${account}:transcription-job/*` } }
+        Condition: { StringEquals: { "aws:SourceAccount": account }, ArnLike: { "aws:SourceArn": $interpolate`arn:aws:transcribe:${region}:${account}:*` } }
       }]
     })
   });
-  new aws.iam.RolePolicy("RecordingTranscribePermissions", {
+  const transcribePolicy = new aws.iam.RolePolicy("RecordingTranscribePermissions", {
     role: transcribeRole.id,
     policy: $jsonStringify({
       Version: "2012-10-17", Statement: [
         { Effect: "Allow", Action: ["s3:GetObject"], Resource: $interpolate`${recordings.arn}/audio/*` },
         { Effect: "Allow", Action: ["s3:PutObject"], Resource: $interpolate`${recordings.arn}/transcripts/*` },
-        { Effect: "Allow", Action: ["s3:GetBucketLocation"], Resource: recordings.arn }
+        { Effect: "Allow", Action: ["s3:GetBucketLocation", "s3:ListBucket"], Resource: recordings.arn }
       ]
     })
   });
@@ -89,15 +59,17 @@ function createCallAnalytics() {
 
   const start = new sst.aws.Function("StartCallTranscription", {
     handler: "packages/call-analytics/src/workflow.startTranscription",
+    // Keep this task on AWS during sst dev: Transcribe validates the caller's S3 output access.
+    dev: false,
     environment: { TRANSCRIBE_DATA_ROLE_ARN: transcribeRole.arn }, timeout: "45 seconds", memory: "512 MB",
     permissions: [
       { actions: ["transcribe:StartTranscriptionJob"], resources: [$interpolate`arn:aws:transcribe:${region}:${account}:transcription-job/eac-call-*`] },
       { actions: ["iam:PassRole"], resources: [transcribeRole.arn] },
       { actions: ["s3:GetObject"], resources: [$interpolate`${recordings.arn}/audio/*`] },
       { actions: ["s3:PutObject"], resources: [$interpolate`${recordings.arn}/transcripts/*`] },
-      { actions: ["s3:GetBucketLocation"], resources: [recordings.arn] }
+      { actions: ["s3:GetBucketLocation", "s3:ListBucket"], resources: [recordings.arn] }
     ]
-  });
+  }, { dependsOn: [transcribePolicy] });
 
   const poll = new sst.aws.Function("PollCallTranscription", {
     handler: "packages/call-analytics/src/workflow.pollTranscription", timeout: "30 seconds", memory: "256 MB",
@@ -106,17 +78,12 @@ function createCallAnalytics() {
 
   const analyze = new sst.aws.Function("AnalyzeSalesCall", {
     handler: "packages/call-analytics/src/workflow.analyze", timeout: "5 minutes", memory: "1024 MB",
-    environment: { ...environment, CATALOG_KNOWLEDGE_BASE_ID: knowledgeBase.id, BEDROCK_MODEL_ID: modelId },
-    permissions: [
-      { actions: ["s3:GetObject"], resources: [$interpolate`${recordings.arn}/transcripts/*`] },
-      { actions: ["bedrock:Retrieve"], resources: [knowledgeBase.arn] },
-      {
-        actions: ["bedrock:InvokeModel"], resources: [
-          $interpolate`arn:aws:bedrock:*::foundation-model/${foundationModelId}`,
-          $interpolate`arn:aws:bedrock:${region}:${account}:inference-profile/${modelId}`
-        ]
-      }
-    ]
+    environment: { ...environment, GOOGLE_CLOUD_PROJECT: googleProject,
+      GOOGLE_CLOUD_LOCATION: process.env.GOOGLE_CLOUD_LOCATION ?? "europe-west4",
+      GEMINI_LOCATION: process.env.GEMINI_LOCATION ?? "eu", GEMINI_MODEL_ID: modelId,
+      EMBEDDING_MODEL_ID: process.env.EMBEDDING_MODEL_ID ?? "gemini-embedding-001",
+      ...googleAuth },
+    permissions: [{ actions: ["s3:GetObject"], resources: [$interpolate`${recordings.arn}/transcripts/*`] }]
   });
 
   const failure = new sst.aws.Function("FailCallRecording", { handler: "packages/call-analytics/src/workflow.failed", environment, timeout: "45 seconds" });
@@ -134,7 +101,7 @@ function createCallAnalytics() {
   const stateMachine = new aws.sfn.StateMachine("PostCallAnalysis", {
     type: "STANDARD", roleArn: stateRole.arn,
     definition: $jsonStringify({
-      Comment: "Transcribe tr-TR, catalog retrieval and Bedrock sales analysis. Payloads contain identifiers only.",
+      Comment: "Transcribe tr-TR, Neon pgvector retrieval and Google Gemini sales analysis. Payloads contain identifiers only.",
       StartAt: "Prepare", TimeoutSeconds: 14400,
       States: {
         Prepare: { Type: "Task", Resource: prepare.arn, Parameters: { "input.$": "$", "executionArn.$": "$$.Execution.Id" }, ResultPath: "$.job", Retry: retry, Catch: catcher, Next: "Claimed" },
@@ -198,7 +165,7 @@ function createCallAnalytics() {
   for (const route of ["POST /recordings", "POST /recordings/{id}/dispatch", "POST /recordings/{id}/retry", "GET /recordings/{id}/playback"]) {
     uploadApi.route(route, apiHandler.arn, { auth: { iam: true } });
   }
-  return { recordings, catalogs, knowledgeBase, dataSource, stateMachine, uploadApi, deadLetters, region };
+  return { recordings, catalogs, analysisRoleArn: analyze.nodes.role.arn, googleProject, stateMachine, uploadApi, deadLetters, region };
 }
 
 export const callAnalytics = enabled ? createCallAnalytics() : null;

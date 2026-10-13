@@ -93,9 +93,11 @@ contract migration'ıyla kaldırılır. Kategoriler dashboard'dan yönetilir.
 ## Görüşme analizi
 
 Admin panelindeki Görüşme Analizleri sayfası müşteriyle yapılan telefon kaydını
-S3'e yükler; EventBridge ve Step Functions ile Transcribe → Bedrock akışını
+S3'e yükler; EventBridge ve Step Functions ile Transcribe → Google Gemini akışını
 çalıştırır. Görüşme özeti, müşteri ihtiyacı, takip adımları ve katalogdan
 kaynaklı ürün önerileri müşteriye bağlı `CallRecording` tablosuna kaydedilir.
+Katalog ve şirket dokümanları Google `gemini-embedding-001` ile indekslenir;
+arama Neon üzerinde pgvector ve tam metin aramasını birleştirir.
 Kurulum, PDF indeksleme ve kubi/production komutları için
 [görüşme analizi rehberini](docs/post-call-analytics.md) kullanın.
 

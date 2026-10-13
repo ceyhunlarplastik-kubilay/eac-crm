@@ -23,8 +23,8 @@ export default $config({
       ...(callAnalytics ? {
         callRecordingsBucket: callAnalytics.recordings.name,
         salesCatalogBucket: callAnalytics.catalogs.name,
-        salesKnowledgeBaseId: callAnalytics.knowledgeBase.id,
-        salesCatalogDataSourceId: callAnalytics.dataSource.dataSourceId,
+        callAnalysisRoleArn: callAnalytics.analysisRoleArn,
+        googleCloudProject: callAnalytics.googleProject,
         callAnalyticsStateMachineArn: callAnalytics.stateMachine.arn,
         callRecordingApi: callAnalytics.uploadApi.url,
         callEventDeadLetterQueue: callAnalytics.deadLetters.url,
